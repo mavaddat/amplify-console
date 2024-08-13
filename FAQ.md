@@ -20,6 +20,8 @@
     - [How do I reduce the cache size?](#how-do-i-reduce-the-cache-size)
     - [How do I disable reading from cache?](#how-do-i-disable-reading-from-cache)
   - [Migration To GitHub Apps](#migration-to-github-apps)
+- [Console](#console)
+  - [Amplify app not showing build status and last updated time in the Amplify Console all apps view](#amplify-app-not-showing-build-status-and-last-updated-time-in-the-amplify-console-all-apps-view)
 - [Redirects](#redirects)
   - [Access denied for certain routes even with SPA redirect rule](#access-denied-for-certain-routes-even-with-spa-redirect-rule)
   - [Reverse Proxying to external API](#reverse-proxying-to-external-api)
@@ -28,13 +30,21 @@
   - [CNAMEAlreadyExistsException](#cnamealreadyexistsexception)
 - [Web previews](#web-previews)
   - [Previews are not being created for new pull requests](#previews-are-not-being-created-for-new-pull-requests)
-- [SSR](#ssr)
+- [SSR (Web Dynamic)](#ssr-web-dynamic)
   - [Convert an SSR App to SSG](#convert-an-ssr-app-to-ssg)
   - [Webpack ModuleNotFound Errors](#webpack-modulenotfound-errors)
   - [NotImplemented Errors](#notimplemented-errors)
   - [[ERROR] AccessDenied: Access Denied](#error-accessdenied-access-denied)
   - [Environment Variables Workaround](#environment-variables-workaround)
   - [Access Lambda Edge Logs](#access-lambda-edge-logs)
+  - [SSR build fails: "target" property is no longer supported](#ssr-build-fails-target-property-is-no-longer-supported)
+- [SSR (Web Compute)](#ssr-web-compute)
+  - [500 error from CloudFront after migrating to Amplify Hosting Compute](#500-error-from-cloudfront-when-migrating-to-amplify-hosting-compute)
+  - [Measure Compute app's initialization/start up time locally](#measure-compute-apps-initializationstart-up-time-locally)
+  - [Static assets (js, css, images, and other media) returning 404s after performing a deployment](#static-assets-js-css-images-and-other-media-returning-404s-after-performing-a-deployment)
+  - [Support for monorepo framework](#support-for-monorepo-framework)
+- [Manual Deployments](#manual-deployments)
+  - [Deployments or jobs are stuck with a pending status in the Amplify Console](#deployments-or-jobs-are-stuck-with-a-pending-status-in-the-amplify-console)
 
 ## Builds
 
@@ -86,7 +96,7 @@ ssh-keygen -f deploy_key -N ""
 2. Encode it and copy the output into an Environment Variable in the Amplify Hosting (e.g. DEPLOY_KEY)
 
 ```sh
-cat deploy_key | base64 | tr -d n
+cat deploy_key | base64 | tr -d '\n'
 ```
 
 3. Add the contents of `deploy_key.pub` to the access keys of the private repo that you want to access
@@ -132,6 +142,28 @@ cache:
 #### How do I disable reading from cache?
 
 Remove the cache section from your buildspec.
+
+## Console
+
+### Amplify app not showing build status and last updated time in the Amplify Console all apps view
+
+This particular behavior can occur if your Amplify app does not have a `PRODUCTION` [stage](https://docs.aws.amazon.com/amplify/latest/APIReference/API_CreateBranch.html#amplify-CreateBranch-request-stage) branch associated to it.
+
+To list the apps in the Amplify Console UI, we use the [ListApps API](https://docs.aws.amazon.com/amplify/latest/APIReference/API_ListApps.html) and it uses the `status` attribute of the production branch to display the build status and last deploy time: https://docs.aws.amazon.com/amplify/latest/APIReference/API_ProductionBranch.html#amplify-Type-ProductionBranch-status
+
+To associate a `PRODUCTION` stage to your app’s branch, you will need to complete the following steps:
+
+- Navigate to the Amplify Console and select the Amplify app
+- Under `App settings` navigate to `General`
+- Click the `Edit` button which is located on the top right corner of the console
+- Under the `Repository settings` section, navigate to the `Production environment/branch` field:
+  - `Production environment` -> Manually deployed apps
+  - `Production branch` -> CI/CD deployed apps
+- From the `Production environment/branch` field dropdown, select the desired branch name
+- Click the `Save` button
+- Navigate to the `All Apps` view in the Amplify Console
+
+Your Amplify app should now display the build status and the last deploy time.
 
 ## Redirects
 
@@ -224,7 +256,7 @@ Common reasons why pull requests previews may not be created:
 
 - If you are using a public GitHub repository and your Amplify app has an IAM [service role](https://docs.aws.amazon.com/amplify/latest/userguide/how-to-service-role-amplify-console.html) associated to it, previews will not be created for security reasons. In this case, you can either disassociate the service role from your App if the app doesn't have a backend, or make the GitHub repository private.
 
-## SSR
+## SSR (Web Dynamic)
 
 **Amplify SSR Docs**: https://docs.aws.amazon.com/amplify/latest/userguide/server-side-rendering-amplify.html
 
@@ -254,7 +286,7 @@ frontend:
   ...
 ```
 
-3. Update the build command in your package.json to use `next export`, then commit this to trigger a new non SSR build.
+3. Update the build command in your `next.config.js` to add `output: 'export'` inside the `nextConfig` (`v14.0.0`	**next export** has been **removed** in favor of **"output": "export"**), then commit this to trigger a new non SSR build.
 
 4. Finally, go to the `Rewrites and redirects` tab in the Amplify Hosting, and delete the first rewrite rule that was re-writing to your SSR CloudFront Distribution.
 
@@ -262,7 +294,7 @@ frontend:
 
 If you are facing Webpack errors (_ModuleNotFound_ / _Cannot find module_) as a result of the new Webpack 5 default.
 
-First, you should check the troubleshooting guide provided by NextJS on this issue: https://nextjs.org/docs/messages/module-not-found. If you are still getting errors after following their guide. Your app may need to be built using the experimental-serverless-trace target. To opt-in into this behavior, you need to set the environment variable `AMPLIFY_NEXTJS_EXPERIMENTAL_TRACE=true` in your App settings. 
+First, you should check the troubleshooting guide provided by NextJS on this issue: https://nextjs.org/docs/messages/module-not-found. If you are still getting errors after following their guide. Your app may need to be built using the experimental-serverless-trace target. To opt-in into this behavior, you need to set the environment variable `AMPLIFY_NEXTJS_EXPERIMENTAL_TRACE=true` in your App settings.
 
 ![](assets/images/amplify_nextjs_experimental_trace_envvar.png)
 
@@ -378,6 +410,15 @@ Follow these steps to access logs for Lambda@Edge functions deployed with your N
 4. Click on the function and navigate to the `Monitor` tab. Select `View Logs in CloudWatch`
 5. If `Log group does not exist` error pops up, select `View existing log groups`. Search for the logs using your region and the Lambda@Edge function ID like so: `/aws/lambda/us-east-1.123abcd-lmnop1`.
 
+### SSR build fails: "target" property is no longer supported
+
+If you are updating your hosted Next.js 11 application to Next.js 12 or Next.js 13 then you may run into this error: `"target" property is no longer supported` when a deployment is triggered. You will need to migrate to Amplify Hosting Compute which was released in november, 2022 to support Next.js versions 12 and 13. This newly added support features:
+
+1. Deployments that are 3x faster
+2. Server-side logs delivered to Amazon CloudWatch
+3. Fully managed infrastructure to reduce operational overhead
+
+For a step-by-step guide to migrate your application to Amplify Hosting Compute, check out our [docs](https://docs.aws.amazon.com/amplify/latest/userguide/update-app-nextjs-version.html).
 
 ### Migration To GitHub Apps
 
@@ -386,3 +427,157 @@ As part of our new added [support for using GitHub Apps to authorize access to r
 If you previously had our GitHub App installed for using our [PR Previews feature](https://docs.aws.amazon.com/amplify/latest/userguide/pr-previews.html), you would have received an email asking you to Accept/Reject this change to our GitHub App Permissions.
 
 To learn more about setting up GitHub access, check out our [docs](https://docs.aws.amazon.com/amplify/latest/userguide/setting-up-GitHub-access.html)
+
+## SSR (Web Compute)
+
+### 500 error from CloudFront when migrating to Amplify Hosting Compute
+
+If you migrated your Next.js app from Classic (Next.js 11 or older) to Amplify Hosting Compute (Next.js 12 or 13), you may have run into a 500 error from CloudFront. This is because the rewrite rule created previously is pointing to the CloudFront distribution that is serving the older version of the application (Next.sj 11 or older). Ideally this rewrite rule is deleted during migration but this is a bug we are tracking to fix. In the mean time, you can mitigate this behavior by manually removing the rule.
+
+Navigate to **App Settings** -> **Rewrites and redirects** -> **Edit** -> **remove rule**.
+
+### Measure Compute app's initialization/start up time locally
+
+The following steps will help you determine the initialization/start up time of your Next.js 12/13 (Compute) app locally and it will enable you to do a comparison to better your app's performance locally v/s on Amplify Hosting:
+
+1. Set the `output` option to `standalone` in the `next.config.js` file:
+
+```
+** @type {import('next').NextConfig} */
+const nextConfig = {
+  // Other options
+  output: "standalone",
+};
+
+module.exports = nextConfig;
+```
+
+2. Build the app using the command: `next build`
+3. Copy the `.next/static` folder to `.next/standalone/.next/static` with the following command:
+
+```
+cp -r .next/static .next/standalone/.next/static
+```
+
+4. Copy the `public` folder to `.next/standalone/public` with the following command:
+
+```
+cp -r public .next/standalone/public
+```
+
+5. Start the Next.js server by running the following command:
+
+```
+node .next/standalone/server.js
+```
+
+6. Note how long it takes between executing the above command and the server starting. Once the server is listening on a port, it should print the following message:
+
+```
+Listening on port 3000
+```
+
+7. Note how long it takes between step 6 and for any other modules to load once the server has started. For example, libraries like [bugsnag](https://www.npmjs.com/package/bugsnag) will take 10-12 seconds to load. Once loaded it will print a message like so: `[bugsnag] loaded`
+
+Add the durations from Step 6 and Step 7, this will be your Compute app's initialization/start up time.
+
+### Static assets (js, css, images, and other media) returning 404s after performing a deployment
+
+By default, Next.js sets the `cache-control` header differently based on how your page fetches data.
+
+If the page uses `getServerSideProps` or `getInitialProps`, the `cache-control` header from Next.js will return the following values `cache-control: s-maxage=31536000, stale-while-revalidate`. AWS Amplify's CDN Amazon CloudFront does not currently support `stale-while-revalidate`
+
+If the page uses `getStaticProps`, the `cache-control` header from Next.js will return the following values `cache-control: public, max-age=31536000, immutable`.
+
+Amplify does not currently support cache invalidation on deployment and instead relies on `cache-control` headers to evict old assets from cache. Once the deployment is complete, Amazon CloudFront may keep the old HTML pages in cache for 24 hours (max cache TTL) and return it to users but it may evict the assets required by the old homepage (such as JS/CSS files) from the cache.
+
+When a user visits the website homepage, they are served with the `index.html` file from the previous deployment (cached by the CDN), which in turn tries to fetch the older assets (evicted from the CDN cache) and gets 404 errors from Amplify Hosting Compute since that asset is no longer hosted by the latest deployment.
+
+To mitigate this, you will need to update the `cache-control` header for your HTML pages within the `customHttp.yml` file as follows:
+
+```
+customHeaders:
+  - pattern: /
+    headers:
+      - key: Cache-Control
+        value: s-maxage=10
+```
+
+### Support for monorepo framework
+
+Amplify now supports apps in generic monorepos as well as apps in monorepos created using npm workspace, pnpm workspace, Yarn workspace, Nx, and Turborepo. When you deploy your app, Amplify automatically detects the monorepo framework that you are using.
+
+Note that PNPM apps require additional configuration.
+
+PNPM gets configuration information from .npmrc files. When you deploy a monorepo app created by PNPM, you must have an `.npmrc` file in your project root directory.
+
+In the `.npmrc` file, you need to set the linker for installing Node packages to `hoisted`. You can copy the following line to your file:
+
+```
+node-linker=hoisted
+```
+
+Pnpm is not included in the Amplify default build container. If you are using PNPM as your package manager, you must add a command to install pnpm in the preBuild phase of your app's build settings.
+The following example excerpt from a build specification shows a preBuild phase with a command to install pnpm:
+
+```
+version: 1
+applications:
+  - frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm install -g pnpm
+```
+
+We also introduced the new `buildPath` attribute in the buildSpec. If you want to build your application under the project root folder, you can set buildPath to `/`. Note that the baseDirectory is the relative path of buildPath (if specified).
+
+For example, an app using the following buildSpec will be built under project root and the build artifacts will be located at `/packages/nextjs-app/.next`
+
+```
+applications:
+  - frontend:
+      buildPath: '/'  # run install and build from monorepo project root
+      phases:
+        preBuild:
+          commands:
+            - npm install
+        build:
+          commands:
+            - npm run build --workspace=nextjs-app
+      artifacts:
+        baseDirectory: packages/nextjs-app/.next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+    appRoot: packages/nextjs-app
+```
+
+## Manual Deployments
+
+### Deployments or jobs are stuck with a pending status in the Amplify Console
+
+Manual deploys allow you to publish your web app with Amplify Hosting without connecting a git provider. This can be achieved using the following methods:
+
+1. Drag and drop your application folder in the Amplify Console
+2. Drag and drop a zip file (that contains the build artifacts of your site) in the Amplify Console
+3. Upload the zip file (that contains the build artifacts of your site) to an Amazon S3 bucket and connect the S3 bucket to an app in the Amplify Console
+4. Use a public URL that points to a zip file (that contains the build artifacts of your site) in the Amplify Console
+
+We are aware of issues with the `drag and drop` functionality when using application folders [1] for manual deployments in the Amplify Console. The deployments can fail due to a number of reasons such as:
+
+- Transient network issues
+- If the files change locally while being uploaded
+- Browser session attempts to upload a large amount of static assets simulatenously
+
+While we work on improving the reliability of our `drag and drop` uploads, we recommend our customers to use a zip file instead of dragging and dropping the application folders.
+
+An even better approach is to upload a zip file to an Amazon S3 bucket as this avoids file uploads from the Amplify Console which should offer a higher reliability for manual deployments. Furthermore, you can automatically trigger updates to your site using the Amplify Console, S3, and AWS Lambda by referring to this [blog post](https://aws.amazon.com/blogs/mobile/deploy-files-s3-dropbox-amplify-console/).
+
+To unblock your current deployments in `pending` state, please run the following [stop-job](https://awscli.amazonaws.com/v2/documentation/api/latest/reference/amplify/stop-job.html) CLI command using the AWS CLI for each frozen deployment:
+
+`aws amplify stop-job --app-id {VALUE} --branch-name {VALUE} --job-id {VALUE}`
+
+This CLI command will cancel the pending jobs and will enable you to retry a new manual deployment.
